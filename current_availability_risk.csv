@@ -1,0 +1,13 @@
+name,position,injury_risk_score,risk_category,soreness,sleep_hours,acwr
+Teaira McCowan,Center,45.0,Medium,4,7.5,1.04
+Natasha Howard,Forward,6.0,Low,6,6.6,1.03
+Odyssey Sims,Guard,2.4,Low,5,7.5,0.93
+Kalani Brown,Forward,0.8,Low,6,7.4,0.99
+Arike Ogunbowale,Guard,0.5,Low,6,7.3,1.04
+Satou Sabally,Forward,0.3,Low,6,6.9,0.86
+Jacy Sheldon,Guard,0.1,Low,6,7.3,0.84
+Lou Lopez Senechal,Guard,0.1,Low,6,7.1,0.95
+Jaelyn Brown,Guard,0.1,Low,6,6.7,0.98
+Stephanie Soares,Center,0.1,Low,6,7.3,0.76
+Monique Billings,Forward,0.1,Low,4,7.8,0.89
+Maddy Siegrist,Forward,0.0,Low,5,7.3,0.94
