@@ -1,60 +1,47 @@
-﻿\# AvailOps — War Room (Python Demo)
+﻿## Privacy, Security, and Operating Model (Best Practice)
 
+This repository is a **public-facing demo**. It is designed to be **safe by default** and portable across teams.
 
+### Data classification
+- **Public/Demo (OK to commit):** `demo_data/`  
+  Contains anonymized/synthetic CSVs and public-only case study exports.
+- **Private/Internal (NEVER commit):** a local folder outside this repo, e.g. `C:\AvailOps_PrivateData\`  
+  May contain identifiable or sensitive performance/medical fields.
 
-A lightweight, shareable \*\*sports performance “War Room” dashboard\*\* built in \*\*Streamlit\*\*.  
+### Fail-safe design
+The app supports two runtime modes using environment variables:
 
-This repository is the \*\*public-facing demo UI\*\* that reads \*\*anonymized/synthetic\*\* exports (CSV) from an ops workflow.
+**Demo / Streamlit Cloud (forced anonymized)**
+- Reads from `demo_data/`
+- Anonymization is ON (`AVAILOPS_ANON=1`)
+- Intended for recruiters and portfolio review
 
+**Private / Local (internal use)**
+- Reads from a private folder outside the repo (e.g., `C:\AvailOps_PrivateData\`)
+- Anonymization can be ON or OFF, but defaults to ON for screenshots
 
+**Hard rule:** do not place private files inside this GitHub repository. Keep private data outside the repo so it cannot be accidentally committed.
 
-\## What this is
+### Environment variables
+- `AVAILOPS_DATA_DIR`  
+  Folder where the app reads CSV inputs (default: `demo_data`)
+- `AVAILOPS_ANON`  
+  `1` = anonymize/redact identities (recommended)  
+  `0` = show identifiable fields (local only; never for Cloud)
+- `AVAILOPS_SALT`  
+  Stable anonymization salt so player codes remain consistent across runs
 
-AvailOps consolidates key availability signals (watchlist flags, recent team trends, and a public-only availability case study) into a single view for quick decision support. It’s designed to be portable across teams: drop in CSV exports and the dashboard updates immediately.
+### Redaction policy (public-safe)
+When `AVAILOPS_ANON=1`, the app:
+- Generates `player_code` (stable hashed ID)
+- Removes name-like columns (`name`, `player_name`, `display_name`, etc.)
+- Drops diagnosis/surgery/medical-note columns if present (keeps generic “flags/drivers”)
 
+### Public case study note (ESPN/wehoop)
+The optional WNBA case study uses **public boxscore availability** (minutes played / DNP events).  
+If “reasons” are shown, they are labeled as **publicly reported** (not medical ground truth) and remain anonymized.
 
-
-\## Inputs (demo)
-
-The app reads CSVs from `/demo\_data`:
-
-
-
-\- Watchlist: `watchlist\_today.csv` (or `watchlist\_today\_example.csv`)
-
-\- Team trends: `team\_trends\_7d.csv` (or `team\_trends\_7d\_example.csv`)
-
-\- Public case study: `public\_wnba\_2025\_DAL\_availability\_anon.csv` (public-only, anonymized)
-
-
-
-> \*\*Privacy note:\*\* This repo uses \*\*demo/anonymized data only\*\*. Do not commit real athlete health/medical data.
-
-
-
-\## Outputs
-
-Streamlit tabs:
-
-\- \*\*Watchlist\*\*: player flags + risk score summary
-
-\- \*\*Team Trends\*\*: rolling 7-day team metrics
-
-\- \*\*Public Case Study\*\*: anonymized availability vs workload
-
-
-
-\## Run locally (Windows)
-
-```powershell
-
-cd C:\\GitHub\\availops-python-demo\\availops-python-demo
-
-python -m venv .venv
-
-.\\.venv\\Scripts\\Activate.ps1
-
-pip install -r requirements.txt
-
-streamlit run app.py
-
+### Debugging & reliability
+- The UI validates inputs (required columns, coercible types) and fails gracefully.
+- If one file is missing/empty, other tabs still render.
+- For troubleshooting: confirm `AVAILOPS_DATA_DIR`, check row counts, and review logs (local-only).

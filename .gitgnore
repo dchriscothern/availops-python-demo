@@ -1,9 +1,47 @@
-# Python
-.venv/
-__pycache__/
-*.pyc
-.ipynb_checkpoints/
+# =========================
+# AvailOps — Python Demo
+# =========================
 
-# OS
+# --- Python / venv ---
+.venv/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dll
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# --- Streamlit local config (can contain local paths) ---
+.streamlit/
+
+# --- Logs / caches ---
+*.log
+.cache/
+.pytest_cache/
+.mypy_cache/
+
+# --- OS junk ---
 .DS_Store
 Thumbs.db
+
+# --- Editors ---
+.vscode/
+.idea/
+
+# --- Private/local-only data (do not commit) ---
+# If you later add a private-mode folder, keep it out of Git:
+private_data/
+private_exports/
+exports_private/
+
+# --- If you accidentally generate local SQLite/DB outputs ---
+*.db-journal
+
+# --- Keep demo data in Git (do NOT ignore demo_data) ---
+# (No rule needed; just don’t add demo_data/ here)
