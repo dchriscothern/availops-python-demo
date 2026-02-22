@@ -1,90 +1,142 @@
-# AvailOps — Availability Operations (Python Demo)
+﻿READ ME CONTENT (paste into Notepad):
 
-AvailOps is a portfolio-grade **availability decision-support** demo for high-performance sport:
-multi-source monitoring → trend features → explainable flags → staff-facing dashboard.
 
-**Data disclosure:** this repository uses **synthetic / demo data** intended for safe sharing.  
-It is **not** a validated clinical tool and does not claim injury prediction, diagnosis, or prevention.
 
----
+AvailOps — War Room (Python Demo)
 
-## Why this repo exists
-This repo is the **public-facing demo**:
-- Shows you can ship a usable dashboard (UI/UX + analytics)
-- Demonstrates an end-to-end monitoring workflow using synthetic data
-- Safe to share with recruiters and teams without exposing athlete data
 
-For the **operational, on-prem** implementation (secure ingest + warehouse + scheduled Quarto reports), see:
-**AvailOps-r-ops-pipeline**
 
----
+A lightweight, shareable sports performance “War Room” dashboard built in Streamlit.
 
-## What this demonstrates
-- A daily “AM board” mindset (readiness + workload context)
-- Multi-source schema thinking (wellness, load, testing, and event history)
-- Transparent flagging (“why” drivers), not black-box claims
-- Optional ML layer as **decision support**, not as a sole decision-maker
+This repository is the public-facing demo UI that reads anonymized/synthetic exports (CSV) from an ops workflow.
 
----
 
-## Tech stack
-- Python (pandas, numpy, scikit-learn)
-- Streamlit (dashboard)
-- SQLite (demo database): `availops_demo.db`
-- Optional model artifact: `availops_risk_model.pkl`
 
----
+What this is
 
-## Quick start (local)
 
-### 1) Create and activate a virtual environment
-Windows (PowerShell):
-```powershell
+
+AvailOps consolidates key availability signals (watchlist flags, recent team trends, and a public-only availability case study) into a single view for quick decision support. It’s designed to be portable across teams: drop in CSV exports and the dashboard updates immediately.
+
+
+
+Inputs (demo)
+
+
+
+The app reads CSVs from /demo\_data:
+
+
+
+Watchlist: watchlist\_today.csv or watchlist\_today\_example.csv
+
+
+
+Team trends: team\_trends\_7d.csv or team\_trends\_7d\_example.csv
+
+
+
+Public case study: public\_wnba\_2025\_DAL\_availability\_anon.csv (public-only, anonymized)
+
+
+
+Privacy note: This repo uses demo/anonymized data only. Do not commit real athlete health/medical data.
+
+
+
+Outputs
+
+
+
+Streamlit tabs:
+
+
+
+Watchlist: player flags + risk score summary
+
+
+
+Team Trends: rolling 7-day team metrics
+
+
+
+Public Case Study: anonymized availability vs workload
+
+
+
+Run locally (Windows)
+
+
+
+Create venv
+
+
+
+Install requirements
+
+
+
+Run Streamlit
+
+
+
+Commands:
+
+
+
 python -m venv .venv
-.venv\Scripts\Activate.ps1
+
+
+
+.\\.venv\\Scripts\\Activate.ps1
+
+
+
 pip install -r requirements.txt
-```
 
-### 2) Run the dashboard
-```powershell
-streamlit run dashboard_availops.py
-```
 
----
 
-## Repository structure
-```
-availops-python-demo/
-├── dashboard_availops.py           # Streamlit dashboard (AvailOps-branded)
-├── ml_models_availops.py           # Optional demo scoring / model build
-├── availops_demo.db                # Demo SQLite database
-├── availops_risk_model.pkl         # Optional demo model artifact
-├── outputs/                        # Optional exports (CSV)
-├── requirements.txt
-├── README.md
-└── LICENSE
-```
+streamlit run app.py
 
----
 
-## What to show in interviews
-Suggested positioning:
-> “This is a public demo using synthetic data to illustrate an availability decision-support workflow.
-> In production, the same logic runs on team hardware with secure exports, role-based access, and scheduled reporting.”
 
----
+Notebook (analysis demo)
 
-## Notes on naming and trademarks
-“AvailOps” is used here as a descriptive internal-tool style name.  
-If you ever commercialize, do a formal trademark search and counsel review.
 
----
 
-## License
-MIT (see LICENSE)
+notebooks/AvailOps\_Demo\_Analysis.ipynb
 
----
 
-## Contact
-Chris Cothern  
-Sport Scientist | Performance Analytics | High Performance Ops
+
+Deploy (Streamlit Cloud)
+
+
+
+Deploy app.py from this repo:
+
+
+
+Repo: availops-python-demo
+
+
+
+Branch: main
+
+
+
+Main file: app.py
+
+
+
+Ops pipeline (separate repo)
+
+
+
+The ops-grade pipeline (automation, warehouse, staff PDFs, integrations) lives in a separate repository.
+
+
+
+Step 3) Save + close Notepad
+
+Step 4) Verify in PowerShell
+
