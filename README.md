@@ -1,142 +1,60 @@
-﻿READ ME CONTENT (paste into Notepad):
+﻿\# AvailOps — War Room (Python Demo)
 
 
 
-AvailOps — War Room (Python Demo)
+A lightweight, shareable \*\*sports performance “War Room” dashboard\*\* built in \*\*Streamlit\*\*.  
+
+This repository is the \*\*public-facing demo UI\*\* that reads \*\*anonymized/synthetic\*\* exports (CSV) from an ops workflow.
 
 
 
-A lightweight, shareable sports performance “War Room” dashboard built in Streamlit.
-
-This repository is the public-facing demo UI that reads anonymized/synthetic exports (CSV) from an ops workflow.
-
-
-
-What this is
-
-
+\## What this is
 
 AvailOps consolidates key availability signals (watchlist flags, recent team trends, and a public-only availability case study) into a single view for quick decision support. It’s designed to be portable across teams: drop in CSV exports and the dashboard updates immediately.
 
 
 
-Inputs (demo)
+\## Inputs (demo)
+
+The app reads CSVs from `/demo\_data`:
 
 
 
-The app reads CSVs from /demo\_data:
+\- Watchlist: `watchlist\_today.csv` (or `watchlist\_today\_example.csv`)
+
+\- Team trends: `team\_trends\_7d.csv` (or `team\_trends\_7d\_example.csv`)
+
+\- Public case study: `public\_wnba\_2025\_DAL\_availability\_anon.csv` (public-only, anonymized)
 
 
 
-Watchlist: watchlist\_today.csv or watchlist\_today\_example.csv
+> \*\*Privacy note:\*\* This repo uses \*\*demo/anonymized data only\*\*. Do not commit real athlete health/medical data.
 
 
 
-Team trends: team\_trends\_7d.csv or team\_trends\_7d\_example.csv
-
-
-
-Public case study: public\_wnba\_2025\_DAL\_availability\_anon.csv (public-only, anonymized)
-
-
-
-Privacy note: This repo uses demo/anonymized data only. Do not commit real athlete health/medical data.
-
-
-
-Outputs
-
-
+\## Outputs
 
 Streamlit tabs:
 
+\- \*\*Watchlist\*\*: player flags + risk score summary
 
+\- \*\*Team Trends\*\*: rolling 7-day team metrics
 
-Watchlist: player flags + risk score summary
-
-
-
-Team Trends: rolling 7-day team metrics
-
-
-
-Public Case Study: anonymized availability vs workload
+\- \*\*Public Case Study\*\*: anonymized availability vs workload
 
 
 
-Run locally (Windows)
+\## Run locally (Windows)
 
+```powershell
 
-
-Create venv
-
-
-
-Install requirements
-
-
-
-Run Streamlit
-
-
-
-Commands:
-
-
+cd C:\\GitHub\\availops-python-demo\\availops-python-demo
 
 python -m venv .venv
 
-
-
 .\\.venv\\Scripts\\Activate.ps1
-
-
 
 pip install -r requirements.txt
 
-
-
 streamlit run app.py
-
-
-
-Notebook (analysis demo)
-
-
-
-notebooks/AvailOps\_Demo\_Analysis.ipynb
-
-
-
-Deploy (Streamlit Cloud)
-
-
-
-Deploy app.py from this repo:
-
-
-
-Repo: availops-python-demo
-
-
-
-Branch: main
-
-
-
-Main file: app.py
-
-
-
-Ops pipeline (separate repo)
-
-
-
-The ops-grade pipeline (automation, warehouse, staff PDFs, integrations) lives in a separate repository.
-
-
-
-Step 3) Save + close Notepad
-
-Step 4) Verify in PowerShell
 
