@@ -114,4 +114,4 @@ with tab3:
                 hover_name="player_code" if "player_code" in df.columns else None,
                 title="Availability vs Workload (Public, anonymized)"
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
