@@ -1,0 +1,4 @@
+"date,athlete_id,display_name,status,risk_score,flags_triggered,notes"
+"2026-02-21,ATH_001,Player A,YELLOW,42,""LOAD_SPIKE;SLEEP_LOW"",""demo only"""
+"2026-02-21,ATH_002,Player B,ORANGE,63,""PAIN_UP;FATIGUE_HIGH"",""demo only"""
+"2026-02-21,ATH_003,Player C,GREEN,18,"""",""demo only"""
