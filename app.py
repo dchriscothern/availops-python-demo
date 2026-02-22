@@ -56,7 +56,7 @@ with tab1:
         else:
             df_show = watch
 
-        st.dataframe(df_show, use_container_width=True)
+        st.dataframe(df_show, width="stretch")
 
         # Risk score plot (if numeric)
         if "risk_score" in df_show.columns:
@@ -64,7 +64,7 @@ with tab1:
                 df_show["risk_score"] = pd.to_numeric(df_show["risk_score"], errors="coerce")
                 fig = px.histogram(df_show.dropna(subset=["risk_score"]), x="risk_score", nbins=20,
                                    title="Risk Score Distribution")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
             except Exception:
                 st.warning("risk_score column exists but could not be plotted as numeric.")
 
@@ -77,7 +77,7 @@ with tab2:
     if trends.empty:
         st.info("Missing demo_data/team_trends_7d_example.csv (optional). Add it to enable trends plotting.")
     else:
-        st.dataframe(trends, use_container_width=True)
+        st.dataframe(trends, width="stretch")
 
         # Try plotting any numeric metric over time if a date column exists
         date_col = next((c for c in trends.columns if "date" in c.lower()), None)
@@ -89,7 +89,7 @@ with tab2:
             if numeric_cols:
                 metric = st.selectbox("Plot metric", numeric_cols)
                 fig = px.line(df.sort_values(date_col), x=date_col, y=metric, title=f"{metric} over time")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
 
 # -------------------------
 # Tab 3: Public Case Study
@@ -100,7 +100,7 @@ with tab3:
     if pub.empty:
         st.info("Missing demo_data/public_wnba_2025_DAL_availability_anon.csv. Copy it from AvailOps GOLD_EXPORT.")
     else:
-        st.dataframe(pub, use_container_width=True)
+        st.dataframe(pub, width="stretch")
 
         if {"minutes_total", "games_dnp"}.issubset(pub.columns):
             df = pub.copy()
