@@ -2,37 +2,66 @@
 
 A lightweight, shareable **sports performance “War Room” dashboard** built in **Streamlit**.
 
-This repo is the **public-facing demo UI**. It reads **anonymized/synthetic** CSV exports and renders:
-- **Watchlist (today)**
-- **Team trends (7-day)**
-- **Public case study (WNBA / wehoop; anonymized, multi-season)**
+This repository is the **public-facing demo UI**. It reads **anonymized/synthetic** CSV exports and renders a decision-support view (Watchlist, Team Trends, Public Case Study).
 
-## Data safety model (best practice)
+---
 
-### Demo (public-safe)
-- Default mode
-- Reads from `demo_data/`
-- Anonymization ON
+## What this is (for recruiters / teams)
 
-### Private (internal)
-- Reads from a folder **outside** the repo, e.g. `C:\AvailOps_PrivateData`
-- Anonymization ON by default
-- **Identifiable mode is hard-blocked unless explicitly allowed and data is outside the repo**
+**AvailOps War Room** consolidates key availability signals into one view:
+- **Watchlist** (who needs attention today)
+- **Team trends** (last 7 days context)
+- **Public case study** (multi-season, anonymized availability via public boxscores)
 
-## Inputs
-Place CSVs in your data directory:
+It’s designed to plug into an ops pipeline that generates daily exports.
 
-- `watchlist_today.csv`
-- `team_trends_7d.csv`
-- `public_wnba_availability_anon_multi.csv` (multi-team + multi-season)
+---
 
-Demo versions live in `demo_data/`.
+## Inputs (CSV files)
+
+The app reads from a data folder:
+
+- **Demo mode (default / deployed):** `demo_data/` (inside this repo)
+- **Private mode (local only):** a folder outside the repo (recommended), e.g. `C:\AvailOps_PrivateData`
+
+Expected filenames:
+
+### Watchlist
+- `watchlist_today.csv` (preferred)
+- `watchlist_today_example.csv` (fallback)
+
+### Team trends
+- `team_trends_7d.csv` (preferred)
+- `team_trends_7d_example.csv` (fallback)
+
+### Public case study (multi-season)
+- `public_wnba_availability_anon_multi.csv` (preferred)
+
+> The public case study dataset should be **anonymized** (e.g., `DAL25_P##`) and contain no medical notes.
+
+---
+
+## Data safety model (important)
+
+### Hard fail-safe
+When the app is **deployed (Streamlit Cloud/headless)**:
+- It **forces Demo mode**
+- It reads **ONLY** from `demo_data/`
+- **Anonymization is always ON**
+- It cannot read your `C:\...` private folders
+
+### Private mode (local only)
+For internal use, you run locally and point the app to a secure folder **outside the repo**.
+
+---
 
 ## Run locally (Windows)
 
-### 1) Demo mode (public-safe)
+Open PowerShell and run:
+
 ```powershell
 cd C:\GitHub\availops-python-demo\availops-python-demo
-Remove-Item Env:\AVAILOPS_DATA_DIR -ErrorAction SilentlyContinue
-$env:AVAILOPS_ANON='1'
-streamlit run app.py
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+streamlit run .\app.py
