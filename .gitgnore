@@ -2,29 +2,27 @@
 # AvailOps — Python Demo
 # =========================
 
-# --- Python / venv ---
+# --- Python / virtual environments ---
 .venv/
 venv/
 ENV/
+env/
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-*.so
-*.dll
+.pytest_cache/
+.mypy_cache/
 
 # --- Jupyter ---
 .ipynb_checkpoints/
-*.ipynb_checkpoints
 
-# --- Streamlit local config (can contain local paths) ---
+# --- Streamlit (local config / secrets) ---
 .streamlit/
+secrets.toml
+*.secrets.toml
 
 # --- Logs / caches ---
 *.log
 .cache/
-.pytest_cache/
-.mypy_cache/
 
 # --- OS junk ---
 .DS_Store
@@ -34,17 +32,18 @@ Thumbs.db
 .vscode/
 .idea/
 
-# --- Private/local-only data (do not commit) ---
-# If you later add a private-mode folder, keep it out of Git:
+# --- Private/local-only data (never commit) ---
 private_data/
 private_exports/
 exports_private/
+AvailOps_PrivateData/
+**/AvailOps_PrivateData/
 
-# --- If you accidentally generate local SQLite/DB outputs ---
+# --- Local databases / artifacts (never commit) ---
+*.sqlite
+*.sqlite3
+*.db
 *.db-journal
-
-# --- Keep demo data in Git (do NOT ignore demo_data) ---
-# (No rule needed; just don’t add demo_data/ here)
-
-# Private/internal data (never commit)
-private_data/
+*.duckdb
+*.wal
+*.tmp
