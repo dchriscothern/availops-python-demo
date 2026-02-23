@@ -45,3 +45,6 @@ exports_private/
 
 # --- Keep demo data in Git (do NOT ignore demo_data) ---
 # (No rule needed; just don’t add demo_data/ here)
+
+# Private/internal data (never commit)
+private_data/
