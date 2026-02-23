@@ -7,495 +7,371 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 
+
 # =============================================================================
-# AvailOps — War Room (Public Demo + Local Private Mode)
-#
-# HARD FAIL-SAFES:
-#  1) If running on Streamlit Cloud/headless => FORCE DEMO mode (private disabled)
-#  2) Private mode requires explicit opt-in: AVAILOPS_PRIVATE_OK=1
-#  3) Private data directory MUST be OUTSIDE the repo root (prevents accidental commit)
+# Paths / environment
 # =============================================================================
+APP_DIR = Path(__file__).resolve().parent
+DEMO_DIR = APP_DIR / "demo_data"
 
+def _is_headless() -> bool:
+    # Streamlit Cloud typically runs headless
+    return os.getenv("STREAMLIT_SERVER_HEADLESS", "").lower() == "true" or os.getenv("STREAMLIT_CLOUD", "").lower() == "true"
 
-# -----------------------------
-# Utilities
-# -----------------------------
-def find_repo_root(start: Path | None = None) -> Path:
-    d = (start or Path.cwd()).resolve()
-    for _ in range(30):
-        if (d / ".git").exists() or (d / "app.py").exists():
-            return d
-        if d.parent == d:
-            break
-        d = d.parent
-    return Path.cwd().resolve()
+HEADLESS = _is_headless()
 
+def _resolve_dir(p: str) -> Path:
+    pp = Path(p).expanduser()
+    if not pp.is_absolute():
+        pp = (APP_DIR / pp).resolve()
+    return pp
 
-def is_cloud_runtime() -> bool:
-    # Streamlit Cloud is typically headless.
-    return os.getenv("STREAMLIT_SERVER_HEADLESS", "").lower() == "true"
+ENV_DATA_DIR = os.getenv("AVAILOPS_DATA_DIR", "").strip()
+DATA_DIR = DEMO_DIR if (not ENV_DATA_DIR) else _resolve_dir(ENV_DATA_DIR)
 
+# Hard cloud safety: Cloud/demo must ALWAYS use demo_data
+if HEADLESS:
+    DATA_DIR = DEMO_DIR
 
-def path_is_inside(child: Path, parent: Path) -> bool:
+IS_DEMO = DATA_DIR.resolve() == DEMO_DIR.resolve()
+
+def _within_repo(path: Path, repo_root: Path) -> bool:
     try:
-        child = child.resolve()
-        parent = parent.resolve()
-        return parent in child.parents or child == parent
+        rp = repo_root.resolve()
+        pp = path.resolve()
+        return (pp == rp) or (rp in pp.parents)
     except Exception:
         return False
 
+IN_REPO = _within_repo(DATA_DIR, APP_DIR)
 
-def stable_code(value: str, salt: str, prefix="P") -> str:
-    h = hashlib.sha256((salt + str(value)).encode("utf-8")).hexdigest()
-    return f"{prefix}{h[:8]}"
+# =============================================================================
+# Privacy / anonymization controls
+# =============================================================================
+def _env_bool(name: str, default: bool) -> bool:
+    v = os.getenv(name, None)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "y")
 
+ANON = True if HEADLESS else _env_bool("AVAILOPS_ANON", True)
+ALLOW_CLEAR = _env_bool("AVAILOPS_ALLOW_CLEAR", False)
 
-@st.cache_data(show_spinner=False)
-def read_csv_robust(path: Path) -> pd.DataFrame:
-    """
-    Reads normal CSVs and fixes the common case where the entire row is in one column
-    (e.g., headers + values all packed into the first cell).
-    """
-    if not path.exists():
-        return pd.DataFrame()
-
-    # Try normal CSV first
-    try:
-        df = pd.read_csv(path)
-        if df.shape[1] > 1:
-            return df
-    except Exception:
-        df = None
-
-    # If it parsed as 1 column, attempt to split by comma using header-in-first-cell
-    try:
-        df = pd.read_csv(path)
-        if df.shape[1] == 1:
-            header = str(df.columns[0])
-            if header.count(",") >= 2:
-                cols = [c.strip() for c in header.split(",")]
-                s = df.iloc[:, 0].astype(str).str.strip()
-                split = s.str.split(",", expand=True)
-                if split.shape[1] == len(cols):
-                    split.columns = cols
-                    split = split.apply(lambda x: x.astype(str).str.strip())
-                    return split
-    except Exception:
-        pass
-
-    # Semicolon fallback
-    try:
-        return pd.read_csv(path, sep=";")
-    except Exception:
-        return pd.DataFrame()
-
-
-def safe_to_datetime(df: pd.DataFrame, col: str) -> pd.DataFrame:
-    if df.empty or col not in df.columns:
-        return df
-    df[col] = pd.to_datetime(df[col], errors="coerce")
-    return df
-
-
-def safe_to_numeric(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
-    if df.empty:
-        return df
-    for c in cols:
-        if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-    return df
-
-
-def show_df(df: pd.DataFrame, **kwargs):
-    # Streamlit is deprecating use_container_width; support both.
-    try:
-        st.dataframe(df, width="stretch", **kwargs)
-    except TypeError:
-        st.dataframe(df, use_container_width=True, **kwargs)
-
-
-def anonymize_watchlist(df: pd.DataFrame, salt: str) -> pd.DataFrame:
-    """
-    Anonymizes watchlist by replacing athlete identifiers with stable player codes,
-    and dropping name/medical-ish columns.
-    """
-    if df.empty:
-        return df
-
-    df = df.copy()
-
-    # Pick an identifier column
-    id_candidates = ["athlete_id", "player_id", "name", "player_name", "display_name"]
-    id_col = next((c for c in id_candidates if c in df.columns), None)
-
-    if id_col:
-        df["player_code"] = df[id_col].astype(str).map(lambda x: stable_code(x, salt=salt, prefix="ATH_"))
-        # Drop the raw identifier to avoid leaking it in screenshots
-        df.drop(columns=[id_col], inplace=True, errors="ignore")
-    else:
-        df["player_code"] = [f"ATH_{i:02d}" for i in range(1, len(df) + 1)]
-
-    # Drop name-like columns (if present)
-    drop_names = [c for c in df.columns if c.lower() in ("name", "player_name", "display_name", "athlete_name")]
-    df.drop(columns=drop_names, inplace=True, errors="ignore")
-
-    # Drop medical-ish fields by keyword
-    redact = [
-        c for c in df.columns
-        if any(k in c.lower() for k in ("diagnos", "injur", "surgery", "acl", "fracture", "concussion", "medical", "note"))
-    ]
-    df.drop(columns=redact, inplace=True, errors="ignore")
-
-    # Move player_code to front
-    cols = ["player_code"] + [c for c in df.columns if c != "player_code"]
-    df = df[cols]
-    return df
-
-
-# -----------------------------
-# Mode + privacy gating
-# -----------------------------
-ROOT = find_repo_root()
-CLOUD = is_cloud_runtime()
-
-# Explicit private opt-in (required)
-PRIVATE_OK = os.getenv("AVAILOPS_PRIVATE_OK", "0") == "1"
-REQUEST_PRIVATE = (os.getenv("AVAILOPS_MODE", "").lower() == "private") or bool(os.getenv("AVAILOPS_DATA_DIR", ""))
-
-# Default: DEMO mode
-MODE = "DEMO"
-DATA_DIR = (ROOT / "demo_data").resolve()
-DATA_SOURCE_LABEL = "demo_data (bundled)"
-
-# Private mode rules
-if CLOUD:
-    # Hard fail-safe: Cloud can NEVER run private mode
-    MODE = "DEMO"
-else:
-    if REQUEST_PRIVATE and PRIVATE_OK:
-        candidate = Path(os.getenv("AVAILOPS_DATA_DIR", "")).expanduser()
-        if candidate:
-            candidate = candidate.resolve()
-
-        if not candidate or not candidate.exists():
-            MODE = "DEMO"
-        else:
-            # Hard fail-safe: private dir must NOT live inside the repo
-            if path_is_inside(candidate, ROOT):
-                MODE = "DEMO"
-                PRIVATE_OK = False  # force off
-            else:
-                MODE = "PRIVATE"
-                DATA_DIR = candidate
-                DATA_SOURCE_LABEL = f"{candidate.name} (local)"
-
-# Anonymization behavior
-# - DEMO: forced anonymized
-# - PRIVATE: default anonymized unless explicitly allowed
-ALLOW_CLEAR = os.getenv("AVAILOPS_ALLOW_CLEAR", "0") == "1"
-ANON = True if MODE == "DEMO" else (os.getenv("AVAILOPS_ANON", "1") == "1")
-if MODE == "PRIVATE" and ALLOW_CLEAR and not CLOUD:
-    # allow clear names only in local private mode
-    ANON = False
-
-# Salt
-SALT = os.getenv("AVAILOPS_SALT", "")
+# Salt for stable pseudonyms
+SALT = os.getenv("AVAILOPS_SALT", "").strip()
 if not SALT:
     try:
         SALT = st.secrets.get("AVAILOPS_SALT", "public-demo-salt")
     except Exception:
         SALT = "public-demo-salt"
 
-RUNTIME = "CLOUD" if CLOUD else "LOCAL"
+def stable_code(value: str, prefix="P") -> str:
+    h = hashlib.sha256((SALT + str(value)).encode("utf-8")).hexdigest()
+    return f"{prefix}-{h[:8]}"
+
+# ---- HARD FAIL-SAFES (prevents accidental private leakage) ----
+if HEADLESS:
+    # Cloud must be demo + anonymized, always
+    if not IS_DEMO:
+        st.error("SAFETY STOP: Streamlit Cloud is locked to DEMO mode (demo_data) only.")
+        st.stop()
+    if not ANON:
+        st.error("SAFETY STOP: Anonymization must be ON in Cloud.")
+        st.stop()
+
+if not ANON:
+    # Clear-name mode is blocked unless explicitly allowed AND data is outside repo AND not demo
+    if IS_DEMO or IN_REPO or (not ALLOW_CLEAR) or HEADLESS:
+        st.error(
+            "SAFETY STOP: Clear-name mode is blocked.\n\n"
+            "To allow clear-name mode you MUST:\n"
+            "  1) Run locally (not Cloud)\n"
+            "  2) Point AVAILOPS_DATA_DIR to a folder OUTSIDE the repo\n"
+            "  3) Set AVAILOPS_ALLOW_CLEAR=1\n"
+        )
+        st.stop()
 
 
-# -----------------------------
-# Load data
-# -----------------------------
-def load_first(names: list[str], directory: Path) -> tuple[pd.DataFrame, Path | None]:
+# =============================================================================
+# Robust CSV reader (handles the “everything in one cell/column” issue)
+# =============================================================================
+def read_csv_robust(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        return pd.DataFrame()
+
+    # First try normal parse
+    try:
+        df = pd.read_csv(path)
+        if df.shape[1] > 1:
+            return df
+    except Exception:
+        pass
+
+    # If it became 1 column, try: header-in-first-cell + split rows by comma
+    try:
+        df = pd.read_csv(path)
+        if df.shape[1] == 1:
+            header = str(df.columns[0]).strip().strip('"')
+            if "," in header:
+                cols = [c.strip().strip('"') for c in header.split(",")]
+                s = df.iloc[:, 0].astype(str).str.strip().str.strip('"')
+                split = s.str.split(",", expand=True)
+                if split.shape[1] == len(cols):
+                    split.columns = cols
+                    return split
+    except Exception:
+        pass
+
+    # Fallback: semicolon
+    try:
+        return pd.read_csv(path, sep=";")
+    except Exception:
+        return pd.DataFrame()
+
+
+def _mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except Exception:
+        return 0.0
+
+@st.cache_data(show_spinner=False)
+def load_csv_cached(path_str: str, mtime: float) -> pd.DataFrame:
+    return read_csv_robust(Path(path_str))
+
+def load_first(dir_path: Path, names: list[str]) -> tuple[pd.DataFrame, Path | None]:
     for n in names:
-        p = directory / n
+        p = dir_path / n
         if p.exists():
-            return read_csv_robust(p), p
+            return load_csv_cached(str(p), _mtime(p)), p
     return pd.DataFrame(), None
 
 
-# Watchlist + trends come from selected data dir (demo or private)
-watch, watch_path = load_first(["watchlist_today.csv", "watchlist_today_example.csv"], DATA_DIR)
-trends, trends_path = load_first(["team_trends_7d.csv", "team_trends_7d_example.csv"], DATA_DIR)
+# =============================================================================
+# Load datasets
+# =============================================================================
+# Private/daily ops exports (watchlist + trends) come from DATA_DIR
+watch, watch_path = load_first(DATA_DIR, ["watchlist_today.csv", "watchlist_today_example.csv"])
+trends, trends_path = load_first(DATA_DIR, ["team_trends_7d.csv", "team_trends_7d_example.csv"])
 
-# Public case-study CSV:
-# Prefer multi-season file if present in *current* DATA_DIR, else fallback to demo_data,
-# else fallback to legacy single-season DAL file.
-public_multi, public_multi_path = load_first(
-    ["public_wnba_availability_anon_multi.csv", "public_wnba_availability_anon_multi_example.csv"],
-    DATA_DIR
-)
+# Public case-study datasets should be public-safe; load from DATA_DIR first, then fallback to demo_data
+public_multi, public_multi_path = load_first(DATA_DIR, ["public_wnba_availability_anon_multi.csv"])
 if public_multi.empty:
-    public_multi, public_multi_path = load_first(
-        ["public_wnba_availability_anon_multi.csv", "public_wnba_availability_anon_multi_example.csv"],
-        (ROOT / "demo_data").resolve()
-    )
+    public_multi, public_multi_path = load_first(DEMO_DIR, ["public_wnba_availability_anon_multi.csv"])
 
-public_single, public_single_path = load_first(
-    ["public_wnba_2025_DAL_availability_anon.csv"],
-    DATA_DIR
-)
+public_single, public_single_path = load_first(DATA_DIR, ["public_wnba_2025_DAL_availability_anon.csv"])
 if public_single.empty:
-    public_single, public_single_path = load_first(
-        ["public_wnba_2025_DAL_availability_anon.csv"],
-        (ROOT / "demo_data").resolve()
-    )
-
-# Coerce types (best effort)
-watch = safe_to_datetime(watch, "date")
-watch = safe_to_numeric(watch, ["risk_score", "minutes", "rpe", "flags_count"])
-
-trends = safe_to_datetime(trends, "date")
-# Make all non-date columns numeric if possible
-if not trends.empty:
-    for c in trends.columns:
-        if c != "date":
-            trends[c] = pd.to_numeric(trends[c], errors="coerce")
-
-# Public multi schema
-if not public_multi.empty:
-    for c in ["season", "games_with_box", "games_played", "games_dnp", "minutes_total", "minutes_avg"]:
-        if c in public_multi.columns:
-            public_multi[c] = pd.to_numeric(public_multi[c], errors="coerce")
-
-# Public single schema
-if not public_single.empty:
-    for c in ["games_with_box", "games_played", "games_dnp", "minutes_total", "minutes_avg"]:
-        if c in public_single.columns:
-            public_single[c] = pd.to_numeric(public_single[c], errors="coerce")
-
-# Apply anonymization to watchlist if enabled
-if ANON and not watch.empty:
-    watch = anonymize_watchlist(watch, salt=SALT)
+    public_single, public_single_path = load_first(DEMO_DIR, ["public_wnba_2025_DAL_availability_anon.csv"])
 
 
-# -----------------------------
+# =============================================================================
+# Coerce types / anonymize
+# =============================================================================
+def coerce_dates(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+    for c in cols:
+        if c in out.columns:
+            out[c] = pd.to_datetime(out[c], errors="coerce")
+    return out
+
+def coerce_numeric(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+    for c in cols:
+        if c in out.columns:
+            out[c] = pd.to_numeric(out[c], errors="coerce")
+    return out
+
+watch = coerce_dates(watch, ["date"])
+watch = coerce_numeric(watch, ["risk_score", "minutes", "rpe", "flags_count"])
+
+trends = coerce_dates(trends, ["date"])
+trends = coerce_numeric(trends, ["team_minutes_7d", "team_load_7d", "sleep_avg_7d", "soreness_avg_7d", "flags_count_7d"])
+
+public_multi = coerce_numeric(public_multi, ["season", "games_with_box", "games_played", "games_dnp", "minutes_total", "minutes_avg"])
+public_single = coerce_numeric(public_single, ["games_with_box", "games_played", "games_dnp", "minutes_total", "minutes_avg"])
+
+def anonymize_watchlist(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+
+    # Prefer athlete_id for stable pseudonym; else display_name; else row index
+    if "athlete_id" in out.columns:
+        out["player_code"] = out["athlete_id"].astype(str).map(lambda x: stable_code(x, prefix="ATH"))
+    elif "display_name" in out.columns:
+        out["player_code"] = out["display_name"].astype(str).map(lambda x: stable_code(x, prefix="ATH"))
+    else:
+        out["player_code"] = [f"ATH-{i:03d}" for i in range(1, len(out) + 1)]
+
+    # Drop name/id columns in anonymized mode
+    out.drop(columns=[c for c in ["athlete_id", "display_name", "name", "player_name"] if c in out.columns], inplace=True, errors="ignore")
+
+    # In Cloud, drop notes entirely (extra safe)
+    if HEADLESS and "notes" in out.columns:
+        out.drop(columns=["notes"], inplace=True, errors="ignore")
+
+    # Move player_code to front
+    cols = ["player_code"] + [c for c in out.columns if c != "player_code"]
+    return out[cols]
+
+if ANON:
+    watch = anonymize_watchlist(watch)
+
+
+# =============================================================================
 # UI
-# -----------------------------
+# =============================================================================
 st.set_page_config(page_title="AvailOps — War Room", layout="wide")
-
 st.title("AvailOps — War Room")
-st.caption("Decision-support view for availability operations (public demo + local private mode).")
+st.caption("Decision-support view for availability ops (public demo + local private mode).")
 
-# Sidebar (clean + professional)
+mode_label = "CLOUD DEMO" if HEADLESS else ("LOCAL DEMO" if IS_DEMO else ("LOCAL PRIVATE (Anonymized)" if ANON else "LOCAL PRIVATE (Clear)"))
+
+# Sidebar (professional + minimal)
 with st.sidebar:
     st.markdown("## AvailOps War Room")
-    mode_badge = "DEMO (Public-safe)" if MODE == "DEMO" else ("PRIVATE (Clear)" if not ANON else "PRIVATE (Anonymized)")
-    st.markdown(f"**Mode:** `{RUNTIME}  |  {mode_badge}`")
-    st.markdown(f"**Data source:** `{DATA_SOURCE_LABEL}`")
+    st.markdown(f"**Mode:** `{mode_label}`")
+    st.markdown(f"**Data source:** `{str(DATA_DIR)}`")
+    st.markdown(f"**Anon:** `{ANON}`")
 
-    if CLOUD:
-        st.info("Streamlit Cloud runs **DEMO only**. Private mode is disabled by design.")
-
-    # Data health
-    st.markdown("---")
+    st.divider()
     st.markdown("### Data health")
-    st.write(f"Watchlist rows: **{0 if watch.empty else len(watch)}**")
-    st.write(f"Trend rows: **{0 if trends.empty else len(trends)}**")
+    st.metric("Watchlist rows", 0 if watch.empty else int(len(watch)))
+    st.metric("Team trend rows", 0 if trends.empty else int(len(trends)))
+    st.metric("Public rows", int(len(public_multi)) if not public_multi.empty else int(len(public_single)))
 
-    # Optional: show file mtimes (safe)
-    with st.expander("Show file details", expanded=False):
-        def fmt(p: Path | None):
-            if not p:
-                return "—"
-            try:
-                return datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-            except Exception:
-                return "—"
+    missing = []
+    if watch_path is None:
+        missing.append("watchlist_today.csv")
+    if trends_path is None:
+        missing.append("team_trends_7d.csv")
 
-        st.write(f"watchlist file: `{watch_path.name if watch_path else '—'}`")
-        st.write(f"watchlist mtime: `{fmt(watch_path)}`")
-        st.write(f"trends file: `{trends_path.name if trends_path else '—'}`")
-        st.write(f"trends mtime: `{fmt(trends_path)}`")
-        st.write(f"public multi: `{public_multi_path.name if public_multi_path else '—'}`")
-        st.write(f"public single: `{public_single_path.name if public_single_path else '—'}`")
+    if missing and (not IS_DEMO):
+        st.warning("Missing private exports:\n- " + "\n- ".join(missing))
 
-    st.markdown("---")
-    with st.expander("How to run modes", expanded=False):
-        st.markdown("**Demo mode (public-safe):**")
-        st.code(
-            "cd C:\\GitHub\\availops-python-demo\\availops-python-demo\n"
-            "streamlit run app.py",
-            language="powershell",
-        )
-        st.markdown("**Private mode (LOCAL only, anonymized):**")
-        st.code(
-            "$env:AVAILOPS_PRIVATE_OK='1'\n"
-            "$env:AVAILOPS_MODE='private'\n"
-            "$env:AVAILOPS_DATA_DIR='C:\\AvailOps_PrivateData'\n"
-            "$env:AVAILOPS_ANON='1'\n"
-            "$env:AVAILOPS_SALT='internal-salt'\n"
-            "streamlit run app.py",
-            language="powershell",
-        )
-        st.markdown("**Private mode (LOCAL only, clear names — discouraged):**")
-        st.code(
-            "$env:AVAILOPS_ALLOW_CLEAR='1'\n"
-            "$env:AVAILOPS_ANON='0'\n"
-            "streamlit run app.py",
-            language="powershell",
-        )
+    st.divider()
+    if st.button("Refresh data"):
+        st.cache_data.clear()
+        st.rerun()
 
-# Top metrics
+# Top metrics row
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Watchlist rows", 0 if watch.empty else len(watch))
 c2.metric("Trend rows", 0 if trends.empty else len(trends))
-pub_rows = 0
-if not public_multi.empty:
-    pub_rows = len(public_multi)
-elif not public_single.empty:
-    pub_rows = len(public_single)
-c3.metric("Public rows", pub_rows)
+c3.metric("Public rows", (0 if (public_multi.empty and public_single.empty) else (len(public_multi) if not public_multi.empty else len(public_single))))
 c4.metric("Last refresh", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 tab1, tab2, tab3 = st.tabs(["Watchlist", "Team Trends", "Public Case Study"])
 
-
-# -------------------------
+# -----------------------------------------------------------------------------
 # Tab 1: Watchlist
-# -------------------------
+# -----------------------------------------------------------------------------
 with tab1:
     st.subheader("Watchlist (today)")
-
     if watch.empty:
         st.warning(
             "No watchlist rows found.\n\n"
-            "Expected in your data folder:\n"
+            "Private mode expects a CSV in your data folder named:\n"
             "- watchlist_today.csv (preferred)\n"
             "- watchlist_today_example.csv (fallback)"
         )
     else:
-        # Flagged subset if status/color exists
         status_col = next((c for c in watch.columns if c.lower() in ("status", "flag", "color")), None)
         risk_col = "risk_score" if "risk_score" in watch.columns else None
 
-        left, right = st.columns([1.3, 1])
+        left, right = st.columns([1.2, 0.8])
 
         with left:
             st.markdown("**All rows**")
-            show_df(watch)
+            st.dataframe(watch, width="stretch")
 
         with right:
             if status_col:
                 flagged = watch[watch[status_col].astype(str).str.upper().isin(["YELLOW", "ORANGE", "RED"])].copy()
                 st.markdown("**Flagged subset (YELLOW/ORANGE/RED)**")
-                show_df(flagged)
+                st.dataframe(flagged, width="stretch")
             else:
-                st.info("No `status/color` column found. Showing risk distribution if available.")
+                st.info("No `status` column found.")
 
             if risk_col and watch[risk_col].notna().any():
                 fig = px.histogram(watch, x=risk_col, nbins=15, title="Risk score distribution")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
 
-
-# -------------------------
+# -----------------------------------------------------------------------------
 # Tab 2: Team Trends
-# -------------------------
+# -----------------------------------------------------------------------------
 with tab2:
-    st.subheader("Team trends")
-
+    st.subheader("Team trends (last 7 days)")
     if trends.empty:
         st.warning(
-            "No trend rows found.\n\n"
-            "Expected in your data folder:\n"
+            "No team trend rows found.\n\n"
+            "Private mode expects a CSV in your data folder named:\n"
             "- team_trends_7d.csv (preferred)\n"
             "- team_trends_7d_example.csv (fallback)"
         )
     else:
-        show_df(trends)
+        st.dataframe(trends, width="stretch")
 
         date_col = "date" if "date" in trends.columns else None
-        metric_candidates = [c for c in trends.columns if c != date_col]
-        metric_candidates = [c for c in metric_candidates if pd.api.types.is_numeric_dtype(trends[c])]
+        metric_candidates = [c for c in trends.columns if c != date_col and pd.api.types.is_numeric_dtype(trends[c])]
 
         if date_col and metric_candidates:
             pick = st.selectbox("Plot metric", metric_candidates, index=0)
             dfp = trends.dropna(subset=[date_col]).sort_values(date_col)
             fig = px.line(dfp, x=date_col, y=pick, title=f"Trend: {pick}")
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Trend plotting requires a `date` column and at least one numeric metric column.")
+            st.plotly_chart(fig, width="stretch")
 
-
-# -------------------------
-# Tab 3: Public Case Study
-# -------------------------
+# -----------------------------------------------------------------------------
+# Tab 3: Public Case Study (multi-season capable)
+# -----------------------------------------------------------------------------
 with tab3:
     st.subheader("Public case study (anonymized availability)")
     st.caption("Source: public ESPN boxscore availability via wehoop. Player identities anonymized.")
 
-    # Prefer multi-season dataset if available
-    if not public_multi.empty and {"season", "team_abb"}.issubset(public_multi.columns):
-        df_pub = public_multi.copy()
+    pub = public_multi if not public_multi.empty else public_single
 
-        # Filters
-        seasons = sorted([int(s) for s in df_pub["season"].dropna().unique().tolist()])
-        teams = sorted([str(t) for t in df_pub["team_abb"].dropna().unique().tolist()])
-
-        colf1, colf2 = st.columns([1, 1])
-        with colf1:
-            season_sel = st.multiselect("Season", seasons, default=seasons[-1:] if seasons else [])
-        with colf2:
-            team_sel = st.multiselect("Team", teams, default=["DAL"] if "DAL" in teams else teams[:1])
-
-        if season_sel:
-            df_pub = df_pub[df_pub["season"].isin(season_sel)]
-        if team_sel:
-            df_pub = df_pub[df_pub["team_abb"].isin(team_sel)]
-
-        show_df(df_pub)
-
-        # Charts (if expected columns exist)
-        if {"games_dnp", "minutes_total"}.issubset(df_pub.columns):
-            fig = px.scatter(
-                df_pub,
-                x="games_dnp",
-                y="minutes_total",
-                color="team_abb" if "team_abb" in df_pub.columns else None,
-                hover_name="player_code" if "player_code" in df_pub.columns else None,
-                title="Availability vs workload (anonymized)",
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-        # Download filtered
-        st.download_button(
-            "Download filtered CSV",
-            df_pub.to_csv(index=False).encode("utf-8"),
-            file_name="public_case_filtered.csv",
-            mime="text/csv",
-        )
-
-    elif not public_single.empty:
-        df_pub = public_single.copy()
-        show_df(df_pub)
-
-        if {"games_dnp", "minutes_total"}.issubset(df_pub.columns):
-            fig = px.scatter(
-                df_pub,
-                x="games_dnp",
-                y="minutes_total",
-                hover_name="player_code" if "player_code" in df_pub.columns else None,
-                title="Availability vs workload (anonymized)",
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-        st.download_button(
-            "Download CSV",
-            df_pub.to_csv(index=False).encode("utf-8"),
-            file_name="public_case.csv",
-            mime="text/csv",
-        )
+    if pub.empty:
+        st.warning("No public case study file found. Expected in demo_data or your data folder.")
     else:
-        st.warning(
-            "No public case-study CSV found.\n\n"
-            "Expected:\n"
-            "- public_wnba_availability_anon_multi.csv (multi-season)\n"
-            "or\n"
-            "- public_wnba_2025_DAL_availability_anon.csv"
-        )
+        # Detect columns for filters
+        season_col = "season" if "season" in pub.columns else None
+        team_col = None
+        for cand in ("team_abb", "team", "team_abbrev", "team_abbreviation"):
+            if cand in pub.columns:
+                team_col = cand
+                break
+
+        # Sidebar filters (only when present)
+        filt = pub.copy()
+        f1, f2 = st.columns(2)
+
+        if season_col:
+            seasons = sorted([int(x) for x in pd.Series(filt[season_col]).dropna().unique().tolist()])
+            with f1:
+                season_pick = st.multiselect("Season", seasons, default=seasons[-1:] if seasons else [])
+            if season_pick:
+                filt = filt[filt[season_col].astype(float).astype(int).isin(season_pick)]
+
+        if team_col:
+            teams = sorted(pd.Series(filt[team_col]).dropna().astype(str).unique().tolist())
+            with f2:
+                team_pick = st.multiselect("Team", teams, default=teams[:1] if teams else [])
+            if team_pick:
+                filt = filt[filt[team_col].astype(str).isin(team_pick)]
+
+        st.dataframe(filt, width="stretch")
+
+        if set(["games_dnp", "minutes_total"]).issubset(filt.columns):
+            hover = "player_code" if "player_code" in filt.columns else None
+            fig = px.scatter(
+                filt,
+                x="games_dnp",
+                y="minutes_total",
+                title="Availability vs workload (anonymized)",
+                hover_name=hover,
+            )
+            st.plotly_chart(fig, width="stretch")
